@@ -1,23 +1,23 @@
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const { Server } = require('socket.io');
-const cors = require('cors');
 
 const app = express();
-app.use(cors());
-
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+const io = new Server(server);
+
+// Роздаємо статичні файли (наш index.html) з поточної папки
+app.use(express.static(__dirname));
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 const rooms = new Map();
 
 io.on('connection', (socket) => {
-  socket.on('joinRoom', ({ roomId, userId }) => {
+  socket.on('joinRoom', ({ roomId }) => {
     socket.join(roomId);
     socket.roomId = roomId;
 
@@ -27,31 +27,21 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomId);
     room.add(socket.id);
 
-    // Якщо в кімнаті з'явилося 2 гравці — даємо старт
     if (room.size === 2) {
-      io.to(roomId).emit('gameStart', { ready: true });
+      io.to(roomId).emit('gameStart');
     }
   });
 
-  // Передача матриці поля опоненту
   socket.on('updateGrid', (grid) => {
-    if (socket.roomId) {
-      socket.to(socket.roomId).emit('enemyGrid', grid);
-    }
+    if (socket.roomId) socket.to(socket.roomId).emit('enemyGrid', grid);
   });
 
-  // Передача сміттєвих ліній
   socket.on('sendGarbage', (amount) => {
-    if (socket.roomId) {
-      socket.to(socket.roomId).emit('receiveGarbage', amount);
-    }
+    if (socket.roomId) socket.to(socket.roomId).emit('receiveGarbage', amount);
   });
 
-  // Сигнал поразки/перемоги
   socket.on('playerGameOver', () => {
-    if (socket.roomId) {
-      socket.to(socket.roomId).emit('opponentWon');
-    }
+    if (socket.roomId) socket.to(socket.roomId).emit('opponentWon');
   });
 
   socket.on('disconnect', () => {
@@ -68,4 +58,4 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
